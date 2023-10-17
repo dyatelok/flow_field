@@ -1,0 +1,11 @@
+[package]
+name = "perlin_noice_2d"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+raylib = { version = "3.7", git = "https://github.com/deltaphc/raylib-rs" }
+rand = "0.8.4"
+euler = "0.4.0"
