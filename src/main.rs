@@ -141,8 +141,11 @@ fn main() {
         for agent in &mut agents {
             d.draw_pixel(agent.x as i32, agent.y as i32, draw_color);
 
-            let vel = flow[(agent.x / CELL_SIDE).min((CELLS * SCALER) as f32).max(0.0) as usize]
-                [(agent.y / CELL_SIDE).min((CELLS * SCALER) as f32).max(0.0) as usize];
+            let vel = flow[(agent.x / CELL_SIDE)
+                .min((CELLS * SCALER) as f32 - 1.0)
+                .max(0.0) as usize][(agent.y / CELL_SIDE)
+                .min((CELLS * SCALER) as f32 - 1.0)
+                .max(0.0) as usize];
 
             // println!(
             //     "pos: {} {} -> {}",
@@ -155,21 +158,22 @@ fn main() {
             agent.x += vel.x * dt;
             agent.y += vel.y * dt;
 
-            if agent.x > SIDE as f32 {
+            if rng.gen::<f32>() < 0.005 {
                 agent.x = rng.gen::<f32>() * SIDE as f32;
                 agent.y = rng.gen::<f32>() * SIDE as f32;
+            }
+
+            if agent.x > SIDE as f32 {
+                agent.x -= SIDE as f32;
             }
             if agent.x < 0.0 {
-                agent.x = rng.gen::<f32>() * SIDE as f32;
-                agent.y = rng.gen::<f32>() * SIDE as f32;
+                agent.x += SIDE as f32;
             }
             if agent.y > SIDE as f32 {
-                agent.x = rng.gen::<f32>() * SIDE as f32;
-                agent.y = rng.gen::<f32>() * SIDE as f32;
+                agent.y -= SIDE as f32;
             }
             if agent.y < 0.0 {
-                agent.x = rng.gen::<f32>() * SIDE as f32;
-                agent.y = rng.gen::<f32>() * SIDE as f32;
+                agent.y += SIDE as f32;
             }
         }
     }
