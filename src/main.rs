@@ -2,64 +2,33 @@ use euler::*;
 use rand::Rng;
 use raylib::prelude::*;
 
-fn perlin(x: f32, y: f32, z: f32, v: &Vec<Vec<Vec<Vec3>>>) -> f32 {
-    let x = x * (v.len() - 1) as f32;
-    let y = y * (v.len() - 1) as f32;
-    let z = z * (v.len() - 1) as f32;
+use std::f32::consts::PI;
 
-    let i: usize = x.floor() as usize;
-    let j: usize = y.floor() as usize;
-    let l: usize = z.floor() as usize;
+fn noise(x: f32, y: f32, v: &[[Vec2; CELLS]; CELLS]) -> f32 {
+    let side = v.len() as f32;
+    let i = ((x * side).floor() as usize).min(v.len() - 1).max(0);
+    let ii = i as f32 / side;
+    let ii1 = (i + 1) as f32 / side;
+    let j = ((y * side).floor() as usize).min(v.len() - 1).max(0);
+    let jj = j as f32 / side;
+    let jj1 = (j + 1) as f32 / side;
+    let mut grid: [[f32; 2]; 2] = [[0.0; 2]; 2];
+    grid[0][0] = vec2!(x - ii, y - jj).dot(v[i][j]);
+    grid[0][1] = vec2!(x - ii, y - jj1).dot(v[i][(j + 1) % v.len()]);
+    grid[1][0] = vec2!(x - ii1, y - jj).dot(v[(i + 1) % v.len()][j]);
+    grid[1][1] = vec2!(x - ii1, y - jj1).dot(v[(i + 1) % v.len()][(j + 1) % v.len()]);
+    let x = (x - ii) * side;
+    let y = (y - jj) * side;
 
-    let ii = i as f32;
-    let jj = j as f32;
-    let ll = l as f32;
-
-    let xx = x - i as f32;
-    let yy = y - j as f32;
-    let zz = z - l as f32;
-
-    let mut vv: Vec3;
-    let mut g: Vec<Vec<Vec<f32>>> = vec![vec!(vec!(0.0; 2); 2); 2];
-
-    vv = vec3!(x - ii, y - jj, z - ll); //.normalize();
-    g[0][0][0] = vv.dot(v[i][j][l]);
-
-    vv = vec3!(x - ii - 1.0, y - jj, z - ll); //.normalize();
-    g[1][0][0] = vv.dot(v[i + 1][j][l]);
-
-    vv = vec3!(x - ii, y - jj - 1.0, z - ll); //.normalize();
-    g[0][1][0] = vv.dot(v[i][j + 1][l]);
-
-    vv = vec3!(x - ii - 1.0, y - jj - 1.0, z - ll); //.normalize();
-    g[1][1][0] = vv.dot(v[i + 1][j + 1][l]);
-
-    vv = vec3!(x - ii, y - jj, z - ll - 1.0); //.normalize();
-    g[0][0][1] = vv.dot(v[i][j][l + 1]);
-
-    vv = vec3!(x - ii - 1.0, y - jj, z - ll - 1.0); //.normalize();
-    g[1][0][1] = vv.dot(v[i + 1][j][l + 1]);
-
-    vv = vec3!(x - ii, y - jj - 1.0, z - ll - 1.0); //.normalize();
-    g[0][1][1] = vv.dot(v[i][j + 1][l + 1]);
-
-    vv = vec3!(x - ii - 1.0, y - jj - 1.0, z - ll - 1.0); //.normalize();
-    g[1][1][1] = vv.dot(v[i + 1][j + 1][l + 1]);
-
-    interp(g, xx, yy, zz)
+    interp(grid, x, y)
 }
 
-fn interp(g: Vec<Vec<Vec<f32>>>, x: f32, y: f32, z: f32) -> f32 {
-    let xx = fade(x);
-    let yy = fade(y);
-    let zz = fade(z);
-    let a0 = lerp(g[0][0][0], g[1][0][0], xx);
-    let b0 = lerp(g[0][1][0], g[1][1][0], xx);
-    let c0 = lerp(a0, b0, yy);
-    let a1 = lerp(g[0][0][1], g[1][0][1], xx);
-    let b1 = lerp(g[0][1][1], g[1][1][1], xx);
-    let c1 = lerp(a1, b1, yy);
-    lerp(c0, c1, zz)
+fn interp(grid: [[f32; 2]; 2], x: f32, y: f32) -> f32 {
+    let x = fade(x);
+    let y = fade(y);
+    let a = lerp(grid[0][0], grid[1][0], x);
+    let b = lerp(grid[0][1], grid[1][1], x);
+    lerp(a, b, y)
 }
 
 fn fade(t: f32) -> f32 {
@@ -70,91 +39,138 @@ fn lerp(a: f32, b: f32, x: f32) -> f32 {
     a + (b - a) * x
 }
 
+const SIDE: i32 = 1000;
+const AGENTS: usize = 500;
+
+const CELLS: usize = 5;
+const SCALER: usize = 20;
+
+const CELL_SIDE: f32 = SIDE as f32 / (CELLS as f32 * SCALER as f32);
+
 fn main() {
     let (mut rl, thread) = raylib::init()
-        .size(600, 600)
+        .size(SIDE, SIDE)
         .title("perlin_flow_field")
         .build();
-    let mut v: Vec<Vec<Vec<Vec3>>> = Vec::new();
-    let r: usize = 30 + 1;
+
+    let mut v = [[vec2![]; CELLS]; CELLS];
+
     let mut rng = rand::thread_rng();
-    v.resize(r, Vec::new());
-    for i in 0..r {
-        v[i].resize(r, Vec::new());
-        for j in 0..r {
-            v[i][j].resize(r, vec3!());
-            for l in 0..r {
-                let mut x: f32 = rng.gen();
-                let mut y: f32 = rng.gen();
-                let mut z: f32 = rng.gen();
-                x -= 0.5;
-                y -= 0.5;
-                z -= 0.5;
-                v[i][j][l] = vec3!(x, y, z).normalize();
-            }
+    for i in 0..CELLS {
+        for j in 0..CELLS {
+            let x = rng.gen::<f32>() - 0.5;
+            let y = rng.gen::<f32>() - 0.5;
+            v[i][j] = vec2!(x, y).normalize();
         }
     }
 
-    let mut V: Vec<Vec2> = vec![];
+    let mut agents: Vec<Vec2> = vec![];
 
-    for _ in 0..100 {
-        let mut x: f32 = rng.gen();
-        x *= 600.0;
-        let mut y: f32 = rng.gen();
-        y *= 600.0;
-        V.push(vec2!(x, y));
+    for _ in 0..AGENTS {
+        let x = rng.gen::<f32>() * SIDE as f32;
+        let y = rng.gen::<f32>() * SIDE as f32;
+        agents.push(vec2!(x, y));
     }
 
-    let mut per: f32;
-    let mut l: f32 = 0.0;
-    let mut i: f32;
-    let mut j: f32;
-    let mut W = [[(vec2!(), vec2!()); 30]; 30];
-    let mut w;
+    let mut flow = [[vec2!(); CELLS * SCALER]; CELLS * SCALER];
+    let mut col = [[Color::new(0, 0, 0, 0); CELLS * SCALER]; CELLS * SCALER];
+
+    let mut noise_min: f32 = f32::MAX;
+    let mut noise_max: f32 = f32::MIN;
+
+    for i_usize in 0..(CELLS * SCALER) {
+        for j_usize in 0..(CELLS * SCALER) {
+            let i = (i_usize as f32 + 0.5) / (CELLS * SCALER) as f32;
+            let j = (j_usize as f32 + 0.5) / (CELLS * SCALER) as f32;
+            let per = noise(i, j, &v);
+            noise_max = noise_max.max(per);
+            noise_min = noise_min.min(per);
+        }
+    }
+    for i_usize in 0..(CELLS * SCALER) {
+        for j_usize in 0..(CELLS * SCALER) {
+            let i = (i_usize as f32 + 0.5) / (CELLS * SCALER) as f32;
+            let j = (j_usize as f32 + 0.5) / (CELLS * SCALER) as f32;
+            let mut per = (noise(i, j, &v) - noise_min) / (noise_max - noise_min);
+            let c: u8 = (per.min(1.0).max(0.0) * 255.0) as u8;
+            col[i_usize][j_usize] = Color::new(c, c, c, 255);
+
+            per *= 2.0 * PI;
+            flow[i_usize][j_usize] = vec2!(per.sin(), per.cos());
+        }
+    }
+
+    let draw_color = Color::new(128, 0, 0, 255);
+
+    // let mut l: f32 = 0.0;
     rl.set_target_fps(100);
-    let mut k: bool = true;
+    {
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::BLACK);
+    }
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
-        if k {
-            d.clear_background(Color::WHITE);
-            k = false;
-        }
-        //d.clear_background(Color::WHITE);
-        for I in 0..30 {
-            for J in 0..30 {
-                i = I as f32;
-                j = J as f32;
-                per = perlin(i / 600.0, j / 600.0, l / 600.0, &v) * 2.0 * PI as f32;
-                W[I][J].1 = vec2!(per.sin(), per.cos());
-                W[I][J].0 += W[I][J].1 / 2.0;
-                W[I][J].0 /= W[I][J].0.length();
-                //d.draw_line_ex(Vector2{ x : i * 20.0 + 10.0, y : j * 20.0 + 10.0}, Vector2{ x : i * 20.0 + 20.0 * per.sin() + 10.0, y : j * 20.0 + 20.0 * per.cos() + 10.0},3.0,Color::BLACK);
-                for v in &V {
-                    d.draw_pixel(v.x as i32, v.y as i32, Color::new(128, 128, 128, 255));
-                }
-            }
-        }
-        for vv in &mut V {
-            w = W[(vv.x / 20.0).min(29.0) as usize][(vv.y / 20.0).min(29.0) as usize].0;
-            vv.x += w.x; //* 5.0;
-            vv.y += w.y; //* 5.0;
-            if vv.x > 600.0 {
-                vv.x -= 600.0;
-            }
-            if vv.x < 0.0 {
-                vv.x += 600.0;
-            }
+        // d.clear_background(Color::RED);
 
-            if vv.y > 600.0 {
-                vv.y -= 600.0;
+        // for i in 0..(CELLS * SCALER) {
+        //     for j in 0..(CELLS * SCALER) {
+        //         let cell_x = i as f32 * CELL_SIDE;
+        //         let cell_y = j as f32 * CELL_SIDE;
+
+        //         d.draw_rectangle(
+        //             cell_x as i32 + 1,
+        //             cell_y as i32 + 1,
+        //             CELL_SIDE as i32 - 2,
+        //             CELL_SIDE as i32 - 2,
+        //             col[i][j],
+        //         );
+        //         // let v_len = 10.0f32;
+        //         // d.draw_line(
+        //         //     cell_centre_x as i32,
+        //         //     cell_centre_y as i32,
+        //         //     (cell_centre_x + flow[i][j].x * v_len)
+        //         //         .min(SIDE as f32)
+        //         //         .max(0.0) as i32,
+        //         //     (cell_centre_y + flow[i][j].y * v_len)
+        //         //         .min(SIDE as f32)
+        //         //         .max(0.0) as i32,
+        //         //     Color::WHITE,
+        //         // );
+        //     }
+        // }
+        for agent in &mut agents {
+            d.draw_pixel(agent.x as i32, agent.y as i32, draw_color);
+
+            let vel = flow[(agent.x / CELL_SIDE).min((CELLS * SCALER) as f32).max(0.0) as usize]
+                [(agent.y / CELL_SIDE).min((CELLS * SCALER) as f32).max(0.0) as usize];
+
+            // println!(
+            //     "pos: {} {} -> {}",
+            //     (agent.x / CELL_SIDE).min(CELLS as f32) as usize,
+            //     (agent.y / CELL_SIDE).min(CELLS as f32) as usize,
+            //     vel
+            // );
+            let dt = 1.0f32;
+
+            agent.x += vel.x * dt;
+            agent.y += vel.y * dt;
+
+            if agent.x > SIDE as f32 {
+                agent.x = rng.gen::<f32>() * SIDE as f32;
+                agent.y = rng.gen::<f32>() * SIDE as f32;
             }
-            if vv.y < 0.0 {
-                vv.y += 600.0;
+            if agent.x < 0.0 {
+                agent.x = rng.gen::<f32>() * SIDE as f32;
+                agent.y = rng.gen::<f32>() * SIDE as f32;
             }
-        }
-        l += 0.1;
-        if l > 599.0 {
-            l = 0.0;
+            if agent.y > SIDE as f32 {
+                agent.x = rng.gen::<f32>() * SIDE as f32;
+                agent.y = rng.gen::<f32>() * SIDE as f32;
+            }
+            if agent.y < 0.0 {
+                agent.x = rng.gen::<f32>() * SIDE as f32;
+                agent.y = rng.gen::<f32>() * SIDE as f32;
+            }
         }
     }
 }
